@@ -1,0 +1,300 @@
+%Samavi Farnush Bint E Naser
+%CHEME 7770
+%PS#2
+%19 Feb 2019
+
+clc
+clear all
+
+%general parameters
+cell_volume=0.58*10^-15;                                        %L/cell
+av_number=6.023*10^23;
+%%assuming equal RNAP allocation/gene
+RNAP_available=0.24*8000*10^6/(av_number*cell_volume);      %micro-M, BIND 101441
+%%assuming equal gene allocation per mRNA type
+gene_concentration_Gp=200*10^6/(av_number*cell_volume);         %micro-M 
+%%assuming equal ribosome allocation per protein type
+ribosome_available=0.8*45100*10^6/(av_number*cell_volume);  %micro-M, BIND 101441
+dry_weight=280*10^-15;                                          %gDW/cell BIND 103904
+
+
+L_TX=1000;                       %nt
+L_TL=333;                        %aa
+
+e_x=42;                          %nt/s BIND 108487
+e_L=14;                          %aa/s BIND 108487
+
+K_EX_avg=e_x/L_TX;                 %1/s
+K_EL_avg=e_L/L_TL;                 %1/s
+
+K_IX=60/42;                                   %McClure min^-1                                                    
+saturation_constant=(80-50)/60*(38-10)*K_IX;  %McClure  micro-M
+K_IL=60/15;
+
+doubling_time_td=30;                                %min
+specific_growth_rate=log(2)/(doubling_time_td);     %1/min
+mRNA_halflife=4;                                    %min
+kd_m=log(2)/(mRNA_halflife);                        %1/min 
+protein_halflife=20;                                %hr BIND 111930
+kd_p=log(2)/(protein_halflife*60);                  %1/min
+
+S=eye(6,6);
+A=zeros(6,6);                                       %1/min
+    A(1,1)=-(specific_growth_rate+kd_m);
+    A(2,2)=-(specific_growth_rate+kd_m);
+    A(3,3)=-(specific_growth_rate+kd_m);
+    A(4,4)=-(specific_growth_rate+kd_p);
+    A(5,5)=-(specific_growth_rate+kd_p);
+    A(6,6)=-(specific_growth_rate+kd_p);
+
+
+step=0.1;                                           %min
+Ahat=expm(A*step);
+Shat=A^(-1)*(Ahat-eye(6,6))*S;
+Z=[0.0; %m1
+   0.0; %m2
+   0.0; %m3
+   0.0; %p1
+   0.0; %p2
+   0.0; %p3
+      ];
+Zstore=zeros(6,3601);
+  
+for k=0:1:3600
+    
+Zstore(:,k+1)=Z;
+
+%%mRNA1
+%control term
+if k<=600
+    I=10;                             %mM
+else
+    I=0;
+end
+KX1=0.3;                              %mM
+n=1.5;
+W1X=0.0;                              %no residual P1
+W1I=100;
+fI=(I^n)/(KX1^n+I^n);             %non-dimensional
+u1=(W1X+W1I*fI)/(1+W1X+W1I*fI);   %control term
+
+%Specific rate of transcription
+Lj_1=1200;                        %nt
+KE_1=K_EX_avg*L_TX/Lj_1*60;       %1/min
+tau_1=KE_1/K_IX;                               
+r_x_1=KE_1*RNAP_available*gene_concentration_Gp/(saturation_constant*tau_1+(tau_1+1)*gene_concentration_Gp); %micro-M/min
+T_X1=r_x_1*u1*cell_volume/dry_weight; %umol/gDW/min
+
+%%protein1
+%Specific rate of translation
+Ll_1=1200/3;                        %aa
+KE_3=K_EL_avg*L_TL/Ll_1*60;         %1/min
+tau_3=KE_3/K_IL;                               
+r_x_3=KE_3*ribosome_available*Z(1)/(saturation_constant*cell_volume/dry_weight*tau_3+(tau_3+1)*Z(1)); %u-M/min
+T_L1=r_x_3*cell_volume/dry_weight; %micromol/gDW/min
+
+%%mRNA2
+%control term
+KX2=1;     %umol/gDW
+n=1.5;
+W2X=0.0;                                 %broken circuit residue=0
+W12=1;
+W32=100;
+f12=(Z(4)^n)/(KX2^n+Z(4)^n);             %non-dimensional
+KX2=10; 
+f32=(Z(6)^n)/(KX2^n+Z(6)^n);             %non-dimensional
+u2=(W2X+W12*f12+W32*f32)/(1+W2X+W12*f12+W32*f32);   %control term
+
+%Specific rate of transcription
+Lj_2=2400;                        %nt
+KE_2=K_EX_avg*L_TX/Lj_2*60;       %1/min
+tau_2=KE_2/K_IX;                               
+r_x_2=KE_2*RNAP_available*gene_concentration_Gp/(saturation_constant*tau_2+(tau_2+1)*gene_concentration_Gp); %micro-M/min
+T_X2=r_x_2*u2*cell_volume/dry_weight; %umol/gDW/min
+
+%%protein2
+%Specific rate of translation
+Ll_2=2400/3;                        %aa
+KE_5=K_EL_avg*L_TL/Ll_2*60;         %1/min
+tau_5=KE_5/K_IL;                               
+r_x_5=KE_5*ribosome_available*Z(2)/(saturation_constant*cell_volume/dry_weight*tau_5+(tau_5+1)*Z(2)); %u-M/min
+T_L2=r_x_5*cell_volume/dry_weight; %umol/gDW/min
+
+%%mRNA3
+%control term
+KX3=1;                          %umol/gDW
+n=1.5;
+W3X=0.0;
+W13=5;
+W23=100;
+f13=(Z(4)^n)/(KX3^n+Z(4)^n);                                  %non-dimensional
+KX3=10; 
+f23=(Z(5)^n)/(KX2^n+Z(5)^n);
+u3=(W3X+W13*f13+W23*f23)/(1+W3X+W13*f13+W23*f23);             %control term
+
+%Specific rate of transcription
+Lj_3=600;                        %nt
+KE_3=K_EX_avg*L_TX/Lj_3*60;      %1/min
+tau_3=KE_3/K_IX;                               
+r_x_3=KE_3*RNAP_available*gene_concentration_Gp/(saturation_constant*tau_3+(tau_3+1)*gene_concentration_Gp); %micro-M/min
+T_X3=r_x_3*u3*cell_volume/dry_weight; %micromol/gDW/min
+
+%%protein3
+%Specific rate of translation
+Ll_3=600/3;                        %aa
+KE_6=K_EL_avg*L_TL/Ll_3*60;       %1/min
+tau_6=KE_6/K_IL;                               
+r_x_6=KE_6*ribosome_available*Z(3)/(saturation_constant*cell_volume/dry_weight*tau_6+(tau_6+1)*Z(3)); %micro-M/min
+T_L3=r_x_6*cell_volume/dry_weight; %micromol/gDW/min
+
+r=[T_X1; T_X2; T_X3; T_L1; T_L2; T_L3];
+
+Znew=Ahat*Z+Shat*r;
+Z=Znew;
+end
+
+tStart = 0.0;
+tStop = 360.0;
+tSim = [tStart,tStop];
+
+%Setup initial conditions
+x0 = [0.0; %m1
+      0.0; %m2
+      0.0; %m3
+      0.0; %p1
+      0.0; %p2
+      0.0; %p3
+      ];
+  
+[t,X]=ode45(@(t,x) Balances_PS2(t,x,S,A),tSim,x0);
+
+time=[0:step:360];
+figure(1)
+hold on
+plot(t,X(:,4),'go')
+plot(t,X(:,5),'bo')
+plot(t,X(:,6),'ko')
+plot(time,Zstore(4,:),'g')
+plot(time,Zstore(5,:),'b')
+plot(time,Zstore(6,:),'k')
+xlabel("time (min)")
+ylabel("Concentration (umol/gDW)")
+title("Functional memory circuit");
+xlim([0 360]);
+legend('P1 numerical','P2 numerical','P3 numerical','P1 discrete','P2 discrete','P3 discrete')
+
+Z=[0.0; %m1
+   0.0; %m2
+   0.0; %m3
+   0.0; %p1
+   0.0; %p2
+   0.0; %p3
+      ];
+Vstore=zeros(6,3601);
+
+for l=0:1:3600
+Vstore(:,l+1)=Z;
+
+%%mRNA1
+%control term
+if l<=600
+    I=10;                             %mM
+else
+    I=0;
+end
+KX1=0.3;                              %mM
+n=1.5;
+W1X=0.0;                              %no residual P1
+W1I=100;
+fI=(I^n)/(KX1^n+I^n);             %non-dimensional
+u1=(W1X+W1I*fI)/(1+W1X+W1I*fI);   %control term
+
+%Specific rate of transcription
+Lj_1=1200;                        %nt
+KE_1=K_EX_avg*L_TX/Lj_1*60;       %1/min
+tau_1=KE_1/K_IX;                               
+r_x_1=KE_1*RNAP_available*gene_concentration_Gp/(saturation_constant*tau_1+(tau_1+1)*gene_concentration_Gp); %micro-M/min
+T_X1=r_x_1*u1*cell_volume/dry_weight; %umol/gDW/min
+
+%%protein1
+%Specific rate of translation
+Ll_1=1200/3;                        %aa
+KE_3=K_EL_avg*L_TL/Ll_1*60;         %1/min
+tau_3=KE_3/K_IL;                               
+r_x_3=KE_3*ribosome_available*Z(1)/(saturation_constant*cell_volume/dry_weight*tau_3+(tau_3+1)*Z(1)); %u-M/min
+T_L1=r_x_3*cell_volume/dry_weight; %micromol/gDW/min
+
+%%mRNA2
+%control term
+KX2=1;     %umol/gDW
+n=1.5;
+W2X=0.0;                                 %broken circuit residue=0
+W12=1;
+W32=100;
+f12=(Z(4)^n)/(KX2^n+Z(4)^n);             %non-dimensional
+KX2=100; 
+f32=(Z(6)^n)/(KX2^n+Z(6)^n);             %non-dimensional
+u2=(W2X+W12*f12+W32*f32)/(1+W2X+W12*f12+W32*f32);   %control term
+
+%Specific rate of transcription
+Lj_2=2400;                        %nt
+KE_2=K_EX_avg*L_TX/Lj_2*60;       %1/min
+tau_2=KE_2/K_IX;                               
+r_x_2=KE_2*RNAP_available*gene_concentration_Gp/(saturation_constant*tau_2+(tau_2+1)*gene_concentration_Gp); %micro-M/min
+T_X2=r_x_2*u2*cell_volume/dry_weight; %umol/gDW/min
+
+%%protein2
+%Specific rate of translation
+Ll_2=2400/3;                        %aa
+KE_5=K_EL_avg*L_TL/Ll_2*60;         %1/min
+tau_5=KE_5/K_IL;                               
+r_x_5=KE_5*ribosome_available*Z(2)/(saturation_constant*cell_volume/dry_weight*tau_5+(tau_5+1)*Z(2)); %u-M/min
+T_L2=r_x_5*cell_volume/dry_weight; %umol/gDW/min
+
+%%mRNA3
+%control term
+KX3=1;                          %umol/gDW
+n=1.5;
+W3X=0.0;
+W13=5;
+W23=100;
+f13=(Z(4)^n)/(KX3^n+Z(4)^n);                                  %non-dimensional
+f23=0.0;
+u3=(W3X+W13*f13+W23*f23)/(1+W3X+W13*f13+W23*f23);             %control term
+
+%Specific rate of transcription
+Lj_3=600;                        %nt
+KE_3=K_EX_avg*L_TX/Lj_3*60;      %1/min
+tau_3=KE_3/K_IX;                               
+r_x_3=KE_3*RNAP_available*gene_concentration_Gp/(saturation_constant*tau_3+(tau_3+1)*gene_concentration_Gp); %micro-M/min
+T_X3=r_x_3*u3*cell_volume/dry_weight; %micromol/gDW/min
+
+%%protein3
+%Specific rate of translation
+Ll_3=600/3;                        %aa
+KE_6=K_EL_avg*L_TL/Ll_3*60;       %1/min
+tau_6=KE_6/K_IL;                               
+r_x_6=KE_6*ribosome_available*Z(3)/(saturation_constant*cell_volume/dry_weight*tau_6+(tau_6+1)*Z(3)); %micro-M/min
+T_L3=r_x_6*cell_volume/dry_weight; %micromol/gDW/min
+
+r=[T_X1; T_X2; T_X3; T_L1; T_L2; T_L3];
+
+Znew=Ahat*Z+Shat*r;
+Z=Znew;
+end
+
+[t,Y]=ode45(@(t,x) Balance_PS2(t,x,S,A),tSim,x0);
+
+figure(2)
+hold on
+plot(t,Y(:,4),'go')
+plot(t,Y(:,5),'bo')
+plot(t,Y(:,6),'ko')
+xlabel("time (min)")
+ylabel("Concentration (umol/gDW)")
+title("Broken memory circuit");
+plot(time,Vstore(4,:),'g')
+plot(time,Vstore(5,:),'b')
+plot(time,Vstore(6,:),'k')
+xlim([0 360]);
+legend('P1 numerical','P2 numerical','P3 numerical','P1 discrete','P2 discrete','P3 discrete')
